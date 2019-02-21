@@ -43,6 +43,7 @@ from bitcoin.core import lx, b2x, b2lx, CMutableTxOut, CMutableTransaction
 from bitcoin.wallet import CBitcoinAddress
 bitcoin.SelectParams('testnet')
 
+TXTENNA_GATEWAY_GID = 2573394689
 
 class goTennaCLI(cmd.Cmd):
     """ CLI handler function
@@ -184,7 +185,7 @@ class goTennaCLI(cmd.Cmd):
     def do_set_gid(self, rem):
         """ Create a new profile (if it does not already exist) with default settings.
 
-        Usage: make_profile GID
+        Usage: set_gid GID
 
         GID should be a 15-digit numerical GID.
         """
@@ -516,7 +517,8 @@ class goTennaCLI(cmd.Cmd):
         messages = self.tx_to_json(strHexTx, strHexTxHash, str(self.messageIdx), network, False)
         for msg in messages :
             _msg = "".join(msg.split()) ## strip whitespace
-            self.do_send_broadcast(_msg)
+            arg = str(TXTENNA_GATEWAY_GID) + ' ' + _msg
+            self.do_send_private(arg)
             sleep(10)
         self.messageIdx = (self.messageIdx+1) % 9999
 
@@ -658,6 +660,7 @@ class goTennaCLI(cmd.Cmd):
         eg. txTenna> mesh_sendtoaddress 2N4BtwKZBU3kXkWT7ZBEcQLQ451AuDWiau2 13371337 t
         """
         try:
+
             proxy = bitcoin.rpc.Proxy()
             (addr, sats, network) = rem.split()
 
@@ -709,18 +712,25 @@ def run_cli():
                         help='The token for the goTenna SDK')
     parser.add_argument('GEO_REGION', type=six.b,
                         help='The geo region number you are in')
+    parser.add_argument("--gateway", action="store_true",
+                        help="Use this computer as an internet connected transaction gateway")
     args = parser.parse_args()  
 
     cli_obj.do_sdk_token(args.SDK_TOKEN)
 
     ## set geo region
     cli_obj.do_set_geo_region(args.GEO_REGION)
-    
-    ## set new random GID every time the server starts
-    _gid = ''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(12))
-    _gid_int = int(_gid, 16)
-    cli_obj.do_set_gid(str(_gid_int))
-    print("gid=",str(_gid_int))
+
+    if args.gateway :
+        ## use default gateway GID
+        _gid = str(TXTENNA_GATEWAY_GID)
+    else :
+        ## create a random GID for to use for sending transaction
+        _gid = ''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(12))
+        _gid = str(int(_gid, 16))
+
+    cli_obj.do_set_gid(_gid)
+    print("set gid=",_gid)
 
     try:
         sleep(5)
