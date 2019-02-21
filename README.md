@@ -9,6 +9,7 @@ Python based version of txtenna that can send and receive Bitcoin transactions v
 * [goTenna Python SDK](https://github.com/remyers/PublicSDK/tree/master/python-public-sdk) - install whl file with pip
 * A free SDK Token received by email from goTenna: https://www.gotenna.com/pages/sdk
 * A goTenna Mesh device plugged into a USB port of your computer (RPi, PC, Mac, Linux, etc)
+* Make sure your goTennas are using firmware 1.1.12 or higher following the [instructions from the goTenna Python SDK](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/Mesh%20Firmware%20Upgrade%20to%201.1.12.pdf).
 
 # How does it work
   
