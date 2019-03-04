@@ -4,6 +4,7 @@ Python based version of txtenna that can send and receive Bitcoin transactions v
 # Prerequisits
 
 * [Python 2.7](https://www.python.org/downloads/) - probably works on 3+ but not tested yet
+* [Pip](https://pypi.org/project/pip/) - use pip install -r resources.txt to load required python modules
 * [Bitcoin Core](https://bitcoincore.org/en/download/) - expects a local **indexed** installation of bitcoind for testnet and/or mainnet
 * [txTenna-server](https://github.com/MuleTools/txTenna-server) - configure with RPC access to local bitcoind installations
 * [goTenna Python SDK](https://github.com/remyers/PublicSDK/tree/master/python-public-sdk) - install whl file with pip
