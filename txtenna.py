@@ -41,8 +41,9 @@ import bitcoin
 import bitcoin.rpc
 from bitcoin.core import lx, b2x, b2lx, CMutableTxOut, CMutableTransaction
 from bitcoin.wallet import CBitcoinAddress
-bitcoin.SelectParams('testnet')
+bitcoin.SelectParams('mainnet')
 
+TXTENNA_GATEWAY_GID = 2573394689
 
 class goTennaCLI(cmd.Cmd):
     """ CLI handler function
@@ -63,6 +64,7 @@ class goTennaCLI(cmd.Cmd):
         self._do_encryption = True
         self._awaiting_disconnect_after_fw_update = [False]
         self.messageIdx = 0
+        self.local = False
 
     def precmd(self, line):
         if not self.api_thread\
@@ -184,7 +186,7 @@ class goTennaCLI(cmd.Cmd):
     def do_set_gid(self, rem):
         """ Create a new profile (if it does not already exist) with default settings.
 
-        Usage: make_profile GID
+        Usage: set_gid GID
 
         GID should be a 15-digit numerical GID.
         """
@@ -487,8 +489,10 @@ class goTennaCLI(cmd.Cmd):
         else :
             ## process incoming segment
             headers = {u'content-type': u'application/json'}
-            url = "http://127.0.0.1:8091/segments" ## local txtenna-server
-            ## url = "https://api.samouraiwallet.com/v2/txtenna/segments" ## default txtenna-server
+            if self.local :
+                url = "http://127.0.0.1:8091/segments" ## local txtenna-server
+            else :
+                url = "https://api.samouraiwallet.com/v2/txtenna/segments" ## default txtenna-server
             r = requests.post(url, headers= headers, data=payload)
             ## print(r.text)
 
@@ -497,8 +501,10 @@ class goTennaCLI(cmd.Cmd):
                 sender_gid = message.sender.gid_val
 
                 ## check for confirmed transaction in a new thread
-                ## self.confirm_bitcoin_tx_online(obj['h'], sender_gid)
-                t = Thread(target=self.confirm_bitcoin_tx_local, args=(obj['h'], sender_gid,obj['n']))
+                if (self.local) :
+                    t = Thread(target=self.confirm_bitcoin_tx_local, args=(obj['h'], sender_gid, obj['n']))
+                else :
+                    t = Thread(target=self.confirm_bitcoin_tx_online, args=(obj['h'], sender_gid, obj['n']))
                 t.start()
 
     def do_mesh_broadcast_rawtx(self, rem):
@@ -516,7 +522,8 @@ class goTennaCLI(cmd.Cmd):
         messages = self.tx_to_json(strHexTx, strHexTxHash, str(self.messageIdx), network, False)
         for msg in messages :
             _msg = "".join(msg.split()) ## strip whitespace
-            self.do_send_broadcast(_msg)
+            arg = str(TXTENNA_GATEWAY_GID) + ' ' + _msg
+            self.do_send_private(arg)
             sleep(10)
         self.messageIdx = (self.messageIdx+1) % 9999
 
@@ -658,6 +665,7 @@ class goTennaCLI(cmd.Cmd):
         eg. txTenna> mesh_sendtoaddress 2N4BtwKZBU3kXkWT7ZBEcQLQ451AuDWiau2 13371337 t
         """
         try:
+
             proxy = bitcoin.rpc.Proxy()
             (addr, sats, network) = rem.split()
 
@@ -709,18 +717,30 @@ def run_cli():
                         help='The token for the goTenna SDK')
     parser.add_argument('GEO_REGION', type=six.b,
                         help='The geo region number you are in')
+    parser.add_argument("--gateway", action="store_true",
+                        help="Use this computer as an internet connected transaction gateway")
+    parser.add_argument("--local", action="store_true",
+                        help="Use local bitcoind and txtenna-server to confirm and broadcast transactions")
     args = parser.parse_args()  
 
     cli_obj.do_sdk_token(args.SDK_TOKEN)
 
     ## set geo region
     cli_obj.do_set_geo_region(args.GEO_REGION)
-    
-    ## set new random GID every time the server starts
-    _gid = ''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(12))
-    _gid_int = int(_gid, 16)
-    cli_obj.do_set_gid(str(_gid_int))
-    print("gid=",str(_gid_int))
+
+    if args.gateway :
+        ## use default gateway GID
+        _gid = str(TXTENNA_GATEWAY_GID)
+    else :
+        ## create a random GID for to use for sending transaction
+        _gid = ''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(12))
+        _gid = str(int(_gid, 16))
+
+    cli_obj.do_set_gid(_gid)
+    print("set gid=",_gid)
+
+    ## use local bitcoind to confirm transactions if 'local' is true
+    cli_obj.local = args.local
 
     try:
         sleep(5)
