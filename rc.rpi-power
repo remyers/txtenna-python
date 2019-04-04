@@ -1,0 +1,8 @@
+# turn off hdmi port
+/usr/bin/tvservice -o
+# turn off blue tooth modems and daemons
+systemctl disable bluetooth
+service bluetooth stop
+systemctl disable hciuart
+service hciuart stop
+
