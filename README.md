@@ -6,21 +6,30 @@ Python based version of txtenna that can send and receive Bitcoin transactions v
 * [Python 2.7](https://www.python.org/downloads/) - probably works on 3+ but not tested yet
 * [Pip](https://pypi.org/project/pip/) - use pip install -r resources.txt to load required python modules
 * [Bitcoin Core](https://bitcoincore.org/en/download/) - expects a local **indexed** installation of bitcoind for testnet and/or mainnet
-* [txTenna-server](https://github.com/MuleTools/txTenna-server) - configure with RPC access to local bitcoind installations
 * [goTenna Python SDK](https://github.com/remyers/PublicSDK/tree/master/python-public-sdk) - install whl file with pip
 * A free SDK Token received by email from goTenna: https://www.gotenna.com/pages/sdk
 * A goTenna Mesh device plugged into a USB port of your computer (RPi, PC, Mac, Linux, etc)
 * Make sure your goTennas are using firmware 1.1.12 or higher following the [instructions from the goTenna Python SDK](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/Mesh%20Firmware%20Upgrade%20to%201.1.12.pdf).
+# From the settings menu of the TxTenna App on your phone, set the 'goTenna Token' to be the same used with txtenna.py.
+# You may need to use the file '77-gotenna.rules' file included with the goTenna Public SDK for some unix systems.
 
 # How does it work
   
-    $ python txtenna.py 
-    usage: Run a txTenna transaction gateway [-h] SDK_TOKEN GEO_REGION
-    Run a txTenna transaction gateway: error: too few arguments
+    $ python txtenna.py -h usage: Run a txTenna transaction gateway [-h] [--gateway] [--local]
+                                         SDK_TOKEN GEO_REGION
+
+	positional arguments:
+	  SDK_TOKEN   The token for the goTenna SDK
+	  GEO_REGION  The geo region number you are in
+
+	optional arguments:
+	  -h, --help  show this help message and exit
+	  --gateway   Use this computer as an internet connected transaction gateway with a default GID
+	  --local     Use local bitcoind to confirm and broadcast transactions
     
-Now you can run python.py with your SDK token and local region (eg. 1 = North America, 2 = Europe)
+Now you can run python.py with your SDK token and geographic region (eg. 1 = North America, 2 = Europe)
     
-    $ python txtenna.py <Your SDK Token String> 2
+    $ python txtenna.py --local <Your SDK Token String> 2
     region=2
     Device physically connected, configure to continue
     gid= 241887036765613
@@ -30,7 +39,7 @@ Now you can run python.py with your SDK token and local region (eg. 1 = North Am
 
     txTenna>
 
-Use an Android phone running the [Samourai Wallet App](SamouraiWallet.com) and the [TxTenna App](txtenna.com) to broadcast a  signed Bitcoin transaction. If you have python.py running you will see the following messages:
+Use an Android phone running the [Samourai Wallet App](SamouraiWallet.com) and the [TxTenna App](txtenna.com) to broadcast a signed Bitcoin transaction. If you have python.py running you will see the following messages:
 
     Sent to GID: 9579079488: Transaction 05b8038c8622a51245e13c948d4eb8f99b77267f3815e90145b38a5776dc6165 added to the mempool.
     Private message to 9579079488: {"h":"05b8038c8622a51245e13c948d4eb8f99b77267f3815e90145b38a5776dc6165","b":"2"} succeeded!
@@ -52,7 +61,6 @@ To originate an offline transaction from your local bitcoind wallet use mesh_sen
     Broadcast message: {"i":"c1fb91490592667a","c":1,"t":"8700a5ea15351d1fb7804c65a76c3810d8feffffff02b95b12000000000017a9146ce02ade2fbc0872bfe524594c87b320ba29b0ef87440a02000000000017a91489f5971e9e02250554f388e27ba5503bb37ce5428702473044"} succeeded!
     Broadcast message: {"i":"c1fb91490592667a","c":2,"t":"022055d8c84a3025ea158c1c59581f478686b0caa713f04f76ba6074ac448c919c8802202d2fc11748416125cfe9f998bfeb3fbd28e9efe81cabb5a9d67d3da75134cb0c01210255eaaf070c085ff81681b5ff50deac761df796"} succeeded!
     Broadcast message: {"i":"c1fb91490592667a","c":3,"t":"a93897952687da2a876b45870a00000000"} succeeded!
-    RPC timeout after calling lockunspent
     txTenna>
     
 If there is a mobile phone running txTenna nearby, you will get the following confirmations:

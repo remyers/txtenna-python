@@ -17,6 +17,10 @@ import random
 import string
 import binascii
 import goTenna # The goTenna API
+from segment_storage import SegmentStorage
+from txtenna_segment import TxTennaSegment
+from io import BytesIO
+import httplib
 
 # For SPI connection only, set SPI_CONNECTION to true with proper SPI settings
 SPI_CONNECTION = False
@@ -39,7 +43,7 @@ except ImportError:
 # Import support for bitcoind RPC interface
 import bitcoin
 import bitcoin.rpc
-from bitcoin.core import lx, b2x, b2lx, CMutableTxOut, CMutableTransaction
+from bitcoin.core import x, lx, b2x, b2lx, CMutableTxOut, CMutableTransaction
 from bitcoin.wallet import CBitcoinAddress
 bitcoin.SelectParams('mainnet')
 
@@ -65,6 +69,7 @@ class goTennaCLI(cmd.Cmd):
         self._awaiting_disconnect_after_fw_update = [False]
         self.messageIdx = 0
         self.local = False
+        self.segment_storage = SegmentStorage()
 
     def precmd(self, line):
         if not self.api_thread\
@@ -373,19 +378,33 @@ class goTennaCLI(cmd.Cmd):
 
     def confirm_bitcoin_tx_local(self, hash, sender_gid, network):
         """ 
-        Confirm bitcoin transaction using local txtenna-server instance
+        Confirm bitcoin transaction using local bitcoind instance
 
         Usage: confirm_bitcoin_tx tx_id gid network
         """ 
 
+        ## send transaction to local bitcond
+        segments = self.segment_storage.get_by_transaction_id(hash)
+        raw_tx = self.segment_storage.get_raw_tx(segments)
+
+        ## pass hex string converted to bytes
+        try :
+            proxy1 = bitcoin.rpc.Proxy()
+            raw_tx_bytes = x(raw_tx)
+            tx = CMutableTransaction.stream_deserialize(BytesIO(raw_tx_bytes))
+            r1 = proxy1.sendrawtransaction(tx)
+        except :
+            print("Invalid Transaction! Could not send to network.")
+            return
+
         ## try for 30 minutes to confirm the transaction
         for n in range(0, 30) :
             try :
-                proxy = bitcoin.rpc.Proxy()
-                r = proxy.getrawtransaction(lx(hash), True)
+                proxy2 = bitcoin.rpc.Proxy()
+                r2 = proxy2.getrawtransaction(r1, True)
 
                 ## send zero-conf message back to tx sender
-                confirmations = r.get('confirmations', 0)
+                confirmations = r2.get('confirmations', 0)
                 rObj = json.dumps({'b': str(confirmations), 'h': hash})
                 ## print(str(rObj))
                 r_text = "".join(str(rObj).split()) # remove whitespace
@@ -393,35 +412,36 @@ class goTennaCLI(cmd.Cmd):
                 self.do_send_private(arg)
 
                 print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " added to the mempool.")
-                sleep(60) # sleep for a minute            
+                break      
+            except IndexError:
+                ## tx_id not yet in the global mempool, sleep for a minute and then try again
+                sleep(60)
+                continue      
             
-                ## wait for atleast one
-                for m in range(0, 30) :
-                    if ( confirmations == 0 ) :
-                        sleep(60) # sleep for a minute
-                        r = proxy.getrawtransaction(lx(hash), True)
-                        confirmations = r.get('confirmations', 0)
-                    else :
+            ## wait for atleast one confirmation
+            for m in range(0, 30):
+                sleep(60) # sleep for a minute
+                try :
+                    proxy3= bitcoin.rpc.Proxy()
+                    r3 = proxy3.getrawtransaction(r1, True)
+                    confirmations = r3.get('confirmations', 0)
+                    ## keep waiting until 1 or more confirmations
+                    if confirmations > 0:
                         break
+                except :
+                    ## unknown RPC error, but keep trying
+                    traceback.print_exc()
 
-                ## send confirmations message back to tx sender
+            if confirmations > 0 :
+                ## send confirmations message back to tx sender if confirmations > 0
                 rObj = json.dumps({'b': str(confirmations), 'h': hash})
                 ## print(str(rObj))
                 r_text = "".join(str(rObj).split()) # remove whitespace
                 arg = str(sender_gid) + ' ' + r_text
                 self.do_send_private(arg)
-
-                print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " confirmed in " + str(confirmations) + " blocks.")
-            except IndexError:
-                ## tx_id not yet in the global mempool, sleep for a minute and then try again
-                sleep(60)
-                continue
-            except :
-                ## unknown RPC error, but keep trying
-                traceback.print_exc()
-                sleep(60)
-                continue
-            break
+                print("\nSent to GID: " + str(sender_gid) + ", Transaction " + hash + " confirmed in " + str(confirmations) + " blocks.")
+            else :
+                print("\CTransaction from GID: " + str(sender_gid) + ", Transaction " + hash + " not confirmed after 30 minutes.")
 
     def confirm_bitcoin_tx_online(self, hash, sender_gid, network):
         """ confirm bitcoin transaction using default online Samourai API instance
@@ -476,35 +496,34 @@ class goTennaCLI(cmd.Cmd):
         Usage: handle_message message
         """
         payload = str(message.payload.message)
-        ## print("received transaction payload: " + payload)
+        print("received transaction payload: " + payload)
 
-        obj = json.loads(payload)
-        if 'b' in obj.keys() :
-            ## process incoming transaction confirmation from another server
-            if (obj['b'] > 0) :
-                print("\nTransaction " + obj['h'] + " confirmed in block " + str(obj['b']))
-            else :
-                print("\nTransaction " + obj['h'] + " added to the the mem pool")
+        segment = TxTennaSegment.deserialize_from_json(payload)
+        self.segment_storage.put(segment)
 
-        else :
+        ## process incoming transaction confirmation from another server
+        if (segment.block > 0):
+            print("\nTransaction " + segment.payload_id + " confirmed in block " + str(segment.block))
+        elif (segment.block is 0):
+            print("\nTransaction " + segment.payload_id + " added to the the mem pool")
+        else:
             ## process incoming segment
-            headers = {u'content-type': u'application/json'}
-            if self.local :
-                url = "http://127.0.0.1:8091/segments" ## local txtenna-server
-            else :
+            if not self.local :
+                headers = {u'content-type': u'application/json'}
                 url = "https://api.samouraiwallet.com/v2/txtenna/segments" ## default txtenna-server
-            r = requests.post(url, headers= headers, data=payload)
-            ## print(r.text)
+                r = requests.post(url, headers= headers, data=payload)
+                print(r.text)
 
-            if 'i' in obj.keys() and not 'c' in obj.keys() :
-                ## print(obj['h'])
+            if (self.segment_storage.is_complete(segment.payload_id)):
                 sender_gid = message.sender.gid_val
+                tx_id = self.segment_storage.get_transaction_id(segment.payload_id)
+                network = "t" if segment.testnet else "m"
 
                 ## check for confirmed transaction in a new thread
                 if (self.local) :
-                    t = Thread(target=self.confirm_bitcoin_tx_local, args=(obj['h'], sender_gid, obj['n']))
+                    t = Thread(target=self.confirm_bitcoin_tx_local, args=(tx_id, sender_gid, network))
                 else :
-                    t = Thread(target=self.confirm_bitcoin_tx_online, args=(obj['h'], sender_gid, obj['n']))
+                    t = Thread(target=self.confirm_bitcoin_tx_online, args=(tx_id, sender_gid, network))
                 t.start()
 
     def do_mesh_broadcast_rawtx(self, rem):
@@ -718,9 +737,9 @@ def run_cli():
     parser.add_argument('GEO_REGION', type=six.b,
                         help='The geo region number you are in')
     parser.add_argument("--gateway", action="store_true",
-                        help="Use this computer as an internet connected transaction gateway")
+                        help="Use this computer as an internet connected transaction gateway with a default GID")
     parser.add_argument("--local", action="store_true",
-                        help="Use local bitcoind and txtenna-server to confirm and broadcast transactions")
+                        help="Use local bitcoind to confirm and broadcast transactions")
     args = parser.parse_args()  
 
     cli_obj.do_sdk_token(args.SDK_TOKEN)
