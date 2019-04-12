@@ -3,7 +3,7 @@ import json
 
 class TxTennaSegment:
 
-    def __init__(self, payload_id, payload, tx_hash=None, sequence_num=0, testnet=False, segment_count=None, block=None):
+    def __init__(self, payload_id, payload, tx_hash=None, sequence_num=0, testnet=False, segment_count=None, block=None, message=False):
         self.segment_count = segment_count
         self.tx_hash = tx_hash
         self.payload_id = payload_id
@@ -11,6 +11,7 @@ class TxTennaSegment:
         self.sequence_num = sequence_num
         self.payload = payload
         self.block = block
+        self.message = message
 
     def __str__(self):
         return "Tx {self.tx_hash} Part {self.sequence_num}"

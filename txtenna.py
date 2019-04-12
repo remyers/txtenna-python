@@ -70,6 +70,9 @@ class goTennaCLI(cmd.Cmd):
         self.messageIdx = 0
         self.local = False
         self.segment_storage = SegmentStorage()
+        self.message_dir = ''
+        self.watch_dir_thread = None
+        self.pipe_file = None
 
     def precmd(self, line):
         if not self.api_thread\
@@ -231,12 +234,18 @@ class goTennaCLI(cmd.Cmd):
             try:
                 method_callback = self.build_callback(error_handler)
                 payload = goTenna.payload.TextPayload(message)
-                corr_id = self.api_thread.send_broadcast(payload,
-                                                         method_callback)
+                print("payload valid = {}, message size = {}\n".format(payload.valid, len(message)))
+                
+                corr_id = self.api_thread.send_broadcast(payload, method_callback)
+                while (corr_id is None):
+                    ## try again if send_broadcast fails
+                    sleep(10)
+                    corr_id = self.api_thread.send_broadcast(payload, method_callback)
+
+                self.in_flight_events[corr_id.bytes] = 'Broadcast message: {}\n'.format(message)
             except ValueError:
                 print("Message too long!")
                 return
-            self.in_flight_events[corr_id.bytes] = 'Broadcast message: {}'.format(message)
 
     @staticmethod
     def _parse_gid(line, gid_type, print_message=True):
@@ -405,10 +414,8 @@ class goTennaCLI(cmd.Cmd):
 
                 ## send zero-conf message back to tx sender
                 confirmations = r2.get('confirmations', 0)
-                rObj = json.dumps({'b': str(confirmations), 'h': hash})
-                ## print(str(rObj))
-                r_text = "".join(str(rObj).split()) # remove whitespace
-                arg = str(sender_gid) + ' ' + r_text
+                rObj = json.dumps({'b': str(confirmations), 'h': hash},separators=(',', ':'))
+                arg = str(sender_gid) + ' ' + rObj
                 self.do_send_private(arg)
 
                 print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " added to the mempool.")
@@ -434,10 +441,8 @@ class goTennaCLI(cmd.Cmd):
 
             if confirmations > 0 :
                 ## send confirmations message back to tx sender if confirmations > 0
-                rObj = json.dumps({'b': str(confirmations), 'h': hash})
-                ## print(str(rObj))
-                r_text = "".join(str(rObj).split()) # remove whitespace
-                arg = str(sender_gid) + ' ' + r_text
+                rObj = json.dumps({'b': str(confirmations), 'h': hash},separators=(',', ':'))
+                arg = str(sender_gid) + ' ' + rObj
                 self.do_send_private(arg)
                 print("\nSent to GID: " + str(sender_gid) + ", Transaction " + hash + " confirmed in " + str(confirmations) + " blocks.")
             else :
@@ -463,8 +468,7 @@ class goTennaCLI(cmd.Cmd):
                 r = requests.get(url)
 
             ## send zero-conf message back to tx sender
-            rObj = json.dumps({'b': 0, 'h': hash})
-            ## print(str(rObj))
+            rObj = json.dumps({'b': 0, 'h': hash},separators=(',', ':'))
             arg = str(sender_gid) + ' ' + str(rObj)
             self.do_send_private(arg)    
 
@@ -480,8 +484,7 @@ class goTennaCLI(cmd.Cmd):
 
             ## send block height message back to tx sender
             bObj = obj['block']
-            rObj = json.dumps({'b': bObj['height'], 'h': hash})
-            ## print(str(rObj))
+            rObj = json.dumps({'b': bObj['height'], 'h': hash},separators=(',', ':'))
             arg = str(sender_gid) + ' ' + str(rObj)
             self.do_send_private(arg)
 
@@ -489,6 +492,24 @@ class goTennaCLI(cmd.Cmd):
 
         except:
             traceback.print_exc()
+            
+    def receive_message_from_gateway(self, filename):
+        """ 
+        Receive message data from a mesh gateway node
+
+        Usage: receive_message_from_gateway filename
+        """ 
+
+        ## send transaction to local bitcond
+        segments = self.segment_storage.get_by_transaction_id(filename)
+        raw_data = self.segment_storage.get_raw_tx(segments)
+
+        ## send the data to the blocksat pipe
+        print("Message Data received for [" + filename + "]:\n" + raw_data+"\n")
+        
+        # Open pipe and write raw data to it
+        pipe_f = os.open(self.pipe_file, os.O_RDWR)
+        os.write(pipe_f, raw_data)
 
     def handle_message(self, message):
         """ handle a txtenna message received over the mesh network
@@ -506,8 +527,13 @@ class goTennaCLI(cmd.Cmd):
             print("\nTransaction " + segment.payload_id + " confirmed in block " + str(segment.block))
         elif (segment.block is 0):
             print("\nTransaction " + segment.payload_id + " added to the the mem pool")
+        elif (segment.message is True):
+            ## process message data
+            if (self.segment_storage.is_complete(segment.payload_id)):
+                filename = self.segment_storage.get_transaction_id(segment.payload_id)
+                t = Thread(target=self.receive_message_from_gateway, args=(filename))
         else:
-            ## process incoming segment
+            ## process incoming tx segment
             if not self.local :
                 headers = {u'content-type': u'application/json'}
                 url = "https://api.samouraiwallet.com/v2/txtenna/segments" ## default txtenna-server
@@ -536,13 +562,11 @@ class goTennaCLI(cmd.Cmd):
         eg. txTenna> mesh_broadcast_rawtx 01000000000101bf6c3ed233e8700b42c1369993c2078780015bab7067b9751b7f49f799efbffd0000000017160014f25dbf0eab0ba7e3482287ebb41a7f6d361de6efffffffff02204e00000000000017a91439cdb4242013e108337df383b1bf063561eb582687abb93b000000000017a9148b963056eedd4a02c91747ea667fc34548cab0848702483045022100e92ce9b5c91dbf1c976d10b2c5ed70d140318f3bf2123091d9071ada27a4a543022030c289d43298ca4ca9d52a4c85f95786c5e27de5881366d9154f6fe13a717f3701210204b40eff96588033722f487a52d39a345dc91413281b31909a4018efb330ba2600000000 94406beb94761fa728a2cde836ca636ecd3c51cbc0febc87a968cb8522ce7cc1 m
         """
 
-        ## TODO: test Z85 compression and add as an option
+        ## TODO: test Z85 binary encoding and add as an option
         (strHexTx, strHexTxHash, network) = rem.split(" ")
         messages = self.tx_to_json(strHexTx, strHexTxHash, str(self.messageIdx), network, False)
         for msg in messages :
-            _msg = "".join(msg.split()) ## strip whitespace
-            arg = str(TXTENNA_GATEWAY_GID) + ' ' + _msg
-            self.do_send_private(arg)
+            self.do_send_broadcast(msg)
             sleep(10)
         self.messageIdx = (self.messageIdx+1) % 9999
 
@@ -577,7 +601,8 @@ class goTennaCLI(cmd.Cmd):
         if len(strRaw) <= segment0Len :
             seg_count = 1
         else :
-            length = len(strRaw)
+            escaped_chars = len(''.join(s for s in strRaw if s in string.whitespace))
+            length = len(strRaw) + escaped_chars
             length -= segment0Len
             seg_count = 1
             seg_count += (length / segment1Len)
@@ -615,10 +640,12 @@ class goTennaCLI(cmd.Cmd):
                 tx_seg = strRaw
                 if len(strRaw) > segment0Len :
                     seg_len = segment0Len
+                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
+                    seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
                 
-                rObj = json.dumps({'s': seg_count,'i': tx_id,'n': tx_network,'h': tx_hash,'t': tx_seg})
+                rObj = json.dumps({'s': seg_count,'i': tx_id,'n': tx_network,'h': tx_hash,'t': tx_seg},separators=(',', ':'))
                 ret.append(rObj)
 
             else :
@@ -626,10 +653,12 @@ class goTennaCLI(cmd.Cmd):
                 tx_seg = strRaw
                 if len(strRaw) > segment1Len :
                     seg_len = segment1Len
+                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
+                    seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
 
-                rObj = json.dumps({'c': seg_num,'i': tx_id,'t': tx_seg})
+                rObj = json.dumps({'c': seg_num,'i': tx_id,'t': tx_seg},separators=(',', ':'))
                 ret.append(rObj)
 
         return ret
@@ -720,6 +749,44 @@ class goTennaCLI(cmd.Cmd):
             ## TODO: figure out why this is happening
             print("RPC timeout after calling lockunspent")
 
+    def do_broadcast_messages(self, message_dir) :
+        """ 
+        Watch a particular directory for files with message data to be broadcast over the mesh network
+
+        Usage: broadcast_messages DIRECTORY
+
+        eg. txTenna> broadcast_messages ./downloads
+        """
+
+        if (message_dir is not None):
+            #start new thread to watch directory
+            self.watch_dir_thread = Thread(target=self.watch_messages, args=(message_dir,))
+            self.watch_dir_thread.start()
+
+    def watch_messages(self, message_dir):
+        
+        before = {}
+        while os.path.exists(message_dir):
+            sleep (10)
+            after = dict ([(f, None) for f in os.listdir (message_dir)])
+            new_files = [f for f in after if not f in before]
+            if new_files:
+                self.broadcast_message_files(message_dir, new_files)
+            before = after
+
+    def broadcast_message_files(self, directory, filenames):
+        for filename in filenames:
+            print("Broadcasting ",directory+"/"+filename)
+            f = open(directory+"/"+filename,'r')
+            message_data = f.read()
+            f.close
+            messages = self.tx_to_json(message_data, filename, str(self.messageIdx), "d", False)
+            for msg in messages :
+                self.do_send_broadcast(msg)
+                sleep(10)
+            self.messageIdx = (self.messageIdx+1) % 9999
+
+
 def run_cli():
     """
     The main function of the sample app.
@@ -740,8 +807,15 @@ def run_cli():
                         help="Use this computer as an internet connected transaction gateway with a default GID")
     parser.add_argument("--local", action="store_true",
                         help="Use local bitcoind to confirm and broadcast transactions")
+    parser.add_argument("--message_dir",
+                        help="Broadcast message data from files in this directory")
+    parser.add_argument('-p', '--pipe',
+                        default='/tmp/blocksat/api',
+                        help='Pipe on which relayed message data is written out to ' +
+                        '(default: /tmp/blocksat/api)')
     args = parser.parse_args()  
 
+    ## start goTenna SDK thread by setting the SDK token
     cli_obj.do_sdk_token(args.SDK_TOKEN)
 
     ## set geo region
@@ -760,6 +834,13 @@ def run_cli():
 
     ## use local bitcoind to confirm transactions if 'local' is true
     cli_obj.local = args.local
+
+    ## broadcast message data from files in this directory, eg. created by the blocksat
+    cli_obj.message_dir = args.message_dir
+    if (args.message_dir is not ""):
+        cli_obj.do_broadcast_messages(args.message_dir)
+
+    cli_obj.pipe_file = args.pipe
 
     try:
         sleep(5)
