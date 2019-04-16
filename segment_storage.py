@@ -27,6 +27,17 @@ class SegmentStorage:
                         return segment.tx_hash
         return None
 
+    def get_network(self, payload_id):
+        if payload_id in self.__payloads:
+            for segment in self.__payloads[payload_id]:
+                    if segment.tx_hash is not None:
+                        if segment.testnet is True:
+                            return 't'
+                        elif segment.message is True:
+                            return 'd'
+                        else:
+                            return 'm'
+
     def remove(self, payload_id):
         if payload_id in self.__payloads:
             for segment in self.__payloads[payload_id]:

@@ -5,11 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "TxTenna.py: Current File (Integrated Terminal)",
+            "name": "TxTenna.py: Receiver",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/txtenna.py",
-            "args": ["<Your Token Goes Here>","2"],
+            "args": ["<Your Token Goes Here>","2","--local","--gateway"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "TxTenna.py: Sender",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/txtenna.py",
+            "args": ["<Your Token Goes Here>","2","--local","--message_dir","./downloads"],
             "console": "integratedTerminal"
         },
     ]

@@ -63,11 +63,12 @@ class TxTennaSegment:
 
         # Optional network flag
         testnet = True if "n" in data and data["n"] == "t" else False
+        message = True if "n" in data and data["n"] == "d" else False
 
         # Block confirmation
         block = data["b"] if "b" in data else None
 
-        return cls( payload_id, payload, tx_hash=tx_hash, sequence_num=sequence_num, testnet=testnet, segment_count=segment_count, block=block)
+        return cls( payload_id, payload, tx_hash=tx_hash, sequence_num=sequence_num, testnet=testnet, segment_count=segment_count, block=block,message=message)
 
     @classmethod
     def segment_json_is_valid(cls, data):
