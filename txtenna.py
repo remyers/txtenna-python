@@ -11,8 +11,6 @@ import requests
 import json
 from threading import Thread
 from time import sleep
-from zmq.utils import z85
-import md5
 import random
 import string
 import binascii
@@ -386,11 +384,11 @@ class goTennaCLI(cmd.Cmd):
         except:
             traceback.print_exc()
 
-    def confirm_bitcoin_tx_local(self, hash, sender_gid, network):
+    def confirm_bitcoin_tx_local(self, hash, sender_gid):
         """ 
         Confirm bitcoin transaction using local bitcoind instance
 
-        Usage: confirm_bitcoin_tx tx_id gid network
+        Usage: confirm_bitcoin_tx tx_id gid
         """ 
 
         ## send transaction to local bitcond
@@ -415,8 +413,8 @@ class goTennaCLI(cmd.Cmd):
 
                 ## send zero-conf message back to tx sender
                 confirmations = r2.get('confirmations', 0)
-                rObj = json.dumps({'b': str(confirmations), 'h': hash},separators=(',', ':'))
-                arg = str(sender_gid) + ' ' + rObj
+                rObj = TxTennaSegment('', '', tx_hash=hash, block=confirmations)
+                arg = str(sender_gid) + ' ' + rObj.serialize_to_json()
                 self.do_send_private(arg)
 
                 print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " added to the mempool.")
@@ -442,8 +440,8 @@ class goTennaCLI(cmd.Cmd):
 
             if confirmations > 0 :
                 ## send confirmations message back to tx sender if confirmations > 0
-                rObj = json.dumps({'b': str(confirmations), 'h': hash},separators=(',', ':'))
-                arg = str(sender_gid) + ' ' + rObj
+                rObj = TxTennaSegment('', '', tx_hash=hash, block=confirmations)
+                arg = str(sender_gid) + ' ' + rObj.serialize_to_json()
                 self.do_send_private(arg)
                 print("\nSent to GID: " + str(sender_gid) + ", Transaction " + hash + " confirmed in " + str(confirmations) + " blocks.")
             else :
@@ -469,8 +467,8 @@ class goTennaCLI(cmd.Cmd):
                 r = requests.get(url)
 
             ## send zero-conf message back to tx sender
-            rObj = json.dumps({'b': 0, 'h': hash},separators=(',', ':'))
-            arg = str(sender_gid) + ' ' + str(rObj)
+            rObj = TxTennaSegment('', '', tx_hash=hash, block=0)
+            arg = str(sender_gid) + ' ' + rObj.serialize_to_json()
             self.do_send_private(arg)    
 
             print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " added to the mempool.")            
@@ -484,12 +482,12 @@ class goTennaCLI(cmd.Cmd):
                 obj = json.loads(r_text)
 
             ## send block height message back to tx sender
-            bObj = obj['block']
-            rObj = json.dumps({'b': bObj['height'], 'h': hash},separators=(',', ':'))
-            arg = str(sender_gid) + ' ' + str(rObj)
+            blockheight = obj['block']['height']
+            rObj = TxTennaSegment('', '', tx_hash=hash, block=blockheight)
+            arg = str(sender_gid) + ' ' + rObj.serialize_to_json()
             self.do_send_private(arg)
 
-            print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " confirmed in block " + str(bObj['height']) + ".")
+            print("\nSent to GID: " + str(sender_gid) + ": Transaction " + hash + " confirmed in block " + str(blockheight) + ".")
 
         except:
             traceback.print_exc()
@@ -583,7 +581,7 @@ class goTennaCLI(cmd.Cmd):
 
                 ## check for confirmed transaction in a new thread
                 if (self.local) :
-                    t = Thread(target=self.confirm_bitcoin_tx_local, args=(tx_id, sender_gid, network))
+                    t = Thread(target=self.confirm_bitcoin_tx_local, args=(tx_id, sender_gid))
                 else :
                     t = Thread(target=self.confirm_bitcoin_tx_online, args=(tx_id, sender_gid, network))
                 t.start()
@@ -600,104 +598,12 @@ class goTennaCLI(cmd.Cmd):
 
         ## TODO: test Z85 binary encoding and add as an option
         (strHexTx, strHexTxHash, network) = rem.split(" ")
-        messages = self.tx_to_json(strHexTx, strHexTxHash, str(self.messageIdx), network, False)
-        for msg in messages :
-            self.do_send_broadcast(msg)
+        gid = self.api_thread.gid.gid_val
+        segments = TxTennaSegment.tx_to_segments(gid, strHexTx, strHexTxHash, str(self.messageIdx), network, False)
+        for seg in segments :
+            self.do_send_broadcast(seg.serialize_to_json())
             sleep(10)
         self.messageIdx = (self.messageIdx+1) % 9999
-
-    def tx_to_json(self, strHexTx, strHexTxHash, messageIdx=0, network='m', isZ85=False):
-        ##
-        ## if Z85 encoding, use 24 extra characters for tx in segment0. Hash encoded on 40 characters instead of 64
-        ##
-        ## This method translated to python from txTenna app PayloadFactory.java : toJSON method
-        ##
-        ## JSON Parameters
-        ##    * **s** - `integer` - Number of segments for the transaction. Only used in the first segment for a given transaction.
-        ##    * **h** - `string` - Hash of the transaction. Only used in the first segment for a given transaction. May be Z85-encoded.
-        ##    * **n** - `char` (optional) - Network to use. 't' for TestNet3, otherwise assume MainNet. Only used in the first segment for a given transaction.
-        ##    * **i** - `string` - TxTenna unid identifying the transaction (8 bytes).
-        ##    * **c** - `integer` - Sequence number for this segment. May be omitted in first segment for a given transaction (assumed to be 0).
-        ##    * **t** - `string` - Hex transaction data for this segment. May be Z85-encoded.
-        ##    * **b** - `integer` - Block height of corresponding transaction hash. Will be 0 for mempool transactions.
-
-        segment0Len = 100  ## 110?
-        segment1Len = 180  ## 190?
-
-        tx_network = network
-
-        if isZ85 : 
-            segment0Len += 24
-
-        strRaw = strHexTx
-        if isZ85 :
-            strRaw = z85.encode(strHexTx)
-
-        seg_count = 0
-        if len(strRaw) <= segment0Len :
-            seg_count = 1
-        else :
-            escaped_chars = len(''.join(s for s in strRaw if s in string.whitespace))
-            length = len(strRaw) + escaped_chars
-            length -= segment0Len
-            seg_count = 1
-            seg_count += (length / segment1Len)
-            if length % segment1Len > 0 :
-                seg_count += 1
-
-        tx_id = messageIdx
-
-        # a unique identifier for set of segments from a particular node
-        _id = str(self.api_thread.gid.gid_val) + "|" + str(messageIdx)
-
-        try :
-            buf = _id.decode("UTF-8")
-            md5_hash = md5.new(buf).digest()
-            idBytes = md5_hash[:8] ## first 8 bytes of md5 digest
-            if isZ85 :
-                tx_id = z85.encode(idBytes.encode("hex"))
-            else :
-                tx_id = idBytes.encode("hex")
-        except Exception: # pylint: disable=broad-except
-            traceback.print_exc()
-
-        ret = []
-        for seg_num in range(0, seg_count) :
-
-            ## Gson gson = new GsonBuilder().disableHtmlEscaping().create();
-
-            if seg_num == 0 :
-                if isZ85 :
-                    tx_hash = z85.encode(strHexTxHash.decode("hex"))
-                else :
-                    tx_hash = strHexTxHash
-
-                seg_len = len(strRaw)
-                tx_seg = strRaw
-                if len(strRaw) > segment0Len :
-                    seg_len = segment0Len
-                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
-                    seg_len -= escaped_chars
-                    tx_seg = strRaw[:seg_len]
-                    strRaw = strRaw[seg_len:]
-                
-                rObj = json.dumps({'s': seg_count,'i': tx_id,'n': tx_network,'h': tx_hash,'t': tx_seg},separators=(',', ':'))
-                ret.append(rObj)
-
-            else :
-                seg_len = len(strRaw)
-                tx_seg = strRaw
-                if len(strRaw) > segment1Len :
-                    seg_len = segment1Len
-                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
-                    seg_len -= escaped_chars
-                    tx_seg = strRaw[:seg_len]
-                    strRaw = strRaw[seg_len:]
-
-                rObj = json.dumps({'c': seg_num,'i': tx_id,'t': tx_seg},separators=(',', ':'))
-                ret.append(rObj)
-
-        return ret
 
     def do_rpc_getbalance(self, rem) :
         """
@@ -816,9 +722,11 @@ class goTennaCLI(cmd.Cmd):
             f = open(directory+"/"+filename,'r')
             message_data = f.read()
             f.close
-            messages = self.tx_to_json(message_data, filename, str(self.messageIdx), "d", False)
-            for msg in messages :
-                self.do_send_broadcast(msg)
+
+            gid = self.api_thread.gid.gid_val
+            segments = TxTennaSegment.tx_to_segments(gid, message_data, filename, str(self.messageIdx), "d", False)
+            for seg in segments :
+                self.do_send_broadcast(seg.serialize_to_json())
                 sleep(10)
             self.messageIdx = (self.messageIdx+1) % 9999
 
@@ -833,7 +741,7 @@ def run_cli():
 
     import argparse
     import six
-    import code
+
     parser = argparse.ArgumentParser('Run a txTenna transaction gateway')
     parser.add_argument('SDK_TOKEN', type=six.b,
                         help='The token for the goTenna SDK')
@@ -861,7 +769,7 @@ def run_cli():
         ## use default gateway GID
         _gid = str(TXTENNA_GATEWAY_GID)
     else :
-        ## create a random GID for to use for sending transaction
+        ## create a random GID to use for sending transaction
         _gid = ''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(12))
         _gid = str(int(_gid, 16))
 
