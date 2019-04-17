@@ -8,7 +8,6 @@ configparser==3.7.1
 cryptography==2.5
 enum34==1.1.6
 futures==3.2.0
-goTenna==0.12.5
 idna==2.8
 ipaddress==1.0.22
 isort==4.3.4
@@ -22,7 +21,7 @@ pyzmq==17.1.2
 requests==2.21.0
 singledispatch==3.4.0.3
 six==1.12.0
-spidev==3.4
 urllib3==1.24.1
-virtualenv==16.4.0
 wrapt==1.11.1
+https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/goTenna-0.12.5-py2-none-any.whl ; sys_platform == "linux"
+
