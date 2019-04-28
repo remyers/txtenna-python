@@ -115,12 +115,13 @@ class TxTennaSegment:
         if isZ85 :
             strRaw = z85.encode(strHexTx)
 
+        escaped_chars = len(''.join(s for s in strRaw if s in string.whitespace))
+        length = len(strRaw) + escaped_chars
+
         seg_count = 0
-        if len(strRaw) <= segment0Len :
+        if length <= segment0Len :
             seg_count = 1
         else :
-            escaped_chars = len(''.join(s for s in strRaw if s in string.whitespace))
-            length = len(strRaw) + escaped_chars
             length -= segment0Len
             seg_count = 1
             seg_count += (length / segment1Len)
@@ -153,11 +154,12 @@ class TxTennaSegment:
                     tx_hash = strHexTxHash
 
                 seg_len = len(strRaw)
+                ## json encodes escaped characters as two characters, eg. /n -> //n
+                escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
+
                 tx_seg = strRaw
-                if len(strRaw) > segment0Len :
+                if seg_len + escaped_chars > segment0Len :
                     seg_len = segment0Len
-                    ## json encodes escaped characters as two characters, eg. /n -> //n
-                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
                     seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
@@ -169,11 +171,11 @@ class TxTennaSegment:
 
             else :
                 seg_len = len(strRaw)
+                ## json encodes escaped characters as two characters, eg. /n -> //n
+                escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
                 tx_seg = strRaw
-                if len(strRaw) > segment1Len :
+                if seg_len + escaped_chars > segment1Len :
                     seg_len = segment1Len
-                    ## json encodes escaped characters as two characters, eg. /n -> //n
-                    escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
                     seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
