@@ -21,7 +21,7 @@ pyzmq==17.1.2
 requests==2.21.0
 singledispatch==3.4.0.3
 six==1.12.0
-urllib3==1.24.1
+urllib3==1.24.2
 wrapt==1.11.1
 https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/goTenna-0.12.5-py2-none-any.whl ; sys_platform == "linux"
 
