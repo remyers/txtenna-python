@@ -1,3 +1,9 @@
+''' 
+This module derived from Rich D's PyMuleTools respository:
+
+https://github.com/kansas-city-bitcoin-developers/PyMuleTools
+'''
+
 import json
 from zmq.utils import z85
 import md5
