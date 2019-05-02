@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/txtenna.py",
-            "args": ["<Your Token Goes Here>","2","--local","--gateway"],
+            "args": ["<Your Token Goes Here>","2","--local","--gateway","--receive_dir","./received"],
             "console": "integratedTerminal"
         },
         {
@@ -17,7 +17,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/txtenna.py",
-            "args": ["<Your Token Goes Here>","2","--local","--message_dir","./downloads"],
+            "args": ["<Your Token Goes Here>","2","--local","--send_dir","./downloads"],
             "console": "integratedTerminal"
         },
     ]
