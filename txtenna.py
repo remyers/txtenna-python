@@ -20,6 +20,7 @@ from txtenna_segment import TxTennaSegment
 from io import BytesIO
 import httplib
 import struct
+import zlib
 
 # For SPI connection only, set SPI_CONNECTION to true with proper SPI settings
 SPI_CONNECTION = False
@@ -69,7 +70,8 @@ class goTennaCLI(cmd.Cmd):
         self.messageIdx = 0
         self.local = False
         self.segment_storage = SegmentStorage()
-        self.message_dir = ''
+        self.send_dir = None
+        self.receive_dir = None
         self.watch_dir_thread = None
         self.pipe_file = None
 
@@ -234,14 +236,14 @@ class goTennaCLI(cmd.Cmd):
                 method_callback = self.build_callback(error_handler)
                 payload = goTenna.payload.TextPayload(message)
                 print("payload valid = {}, message size = {}\n".format(payload.valid, len(message)))
-                
+
                 corr_id = self.api_thread.send_broadcast(payload, method_callback)
                 while (corr_id is None):
                     ## try again if send_broadcast fails
                     sleep(10)
                     corr_id = self.api_thread.send_broadcast(payload, method_callback)
 
-                self.in_flight_events[corr_id.bytes] = 'Broadcast message: {}\n'.format(message)
+                self.in_flight_events[corr_id.bytes] = 'Broadcast message: {} ({} bytes)\n'.format(message,len(message))
             except ValueError:
                 print("Message too long!")
                 return
@@ -531,18 +533,30 @@ class goTennaCLI(cmd.Cmd):
         Usage: receive_message_from_gateway filename
         """ 
 
-        ## send transaction to local bitcond
+        ## send transaction to local blocksat reader pipe
         segments = self.segment_storage.get_by_transaction_id(filename)
-        raw_data = self.segment_storage.get_raw_tx(segments).encode("UTF-8")
+        raw_data = self.segment_storage.get_raw_tx(segments).encode("utf-8")
 
-        deliminted_data = self.create_output_data_struct(raw_data)
+        decoded_data = zlib.decompress(raw_data.decode('base64'))
+
+        deliminted_data = self.create_output_data_struct(decoded_data)
 
         ## send the data to the blocksat pipe
-        print("Message Data received for [" + filename + "]:\n" + raw_data+"\n")
+        try :
+            print("Message Data received for [" + filename + "] ( " + str(len(decoded_data)) + " bytes ) :\n" + str(decoded_data) + "\n")
+        except UnicodeDecodeError :
+            print("Binary Data received for [" + filename + "] ( " + str(len(decoded_data)) + " bytes )\n")
         
-        # Open pipe and write raw data to it
-        pipe_f = os.open(self.pipe_file, os.O_RDWR)
-        os.write(pipe_f, deliminted_data)
+        if not self.pipe_file is None and os.path.exists(self.pipe_file) is True :
+            # Open pipe and write raw data to it
+            pipe_f = os.open(self.pipe_file, os.O_RDWR)
+            os.write(pipe_f, deliminted_data)
+        elif not self.receive_dir is None and os.path.exists(self.receive_dir) is True :
+            # Create file
+            dump_f = os.open(os.path.join(self.receive_dir, filename), os.O_CREAT | os.O_RDWR)
+            os.write(dump_f, decoded_data)
+        else :
+            print("ERROR: Could not save data. No pipe found at [" + self.pipe_file + "] and no receive directory found at [" + self.receive_dir +"]\n")
 
     def handle_message(self, message):
         """ handle a txtenna message received over the mesh network
@@ -691,7 +705,7 @@ class goTennaCLI(cmd.Cmd):
             ## TODO: figure out why this is happening
             print("RPC timeout after calling lockunspent")
 
-    def do_broadcast_messages(self, message_dir) :
+    def do_broadcast_messages(self, send_dir) :
         """ 
         Watch a particular directory for files with message data to be broadcast over the mesh network
 
@@ -700,20 +714,20 @@ class goTennaCLI(cmd.Cmd):
         eg. txTenna> broadcast_messages ./downloads
         """
 
-        if (message_dir is not None):
+        if (send_dir is not None):
             #start new thread to watch directory
-            self.watch_dir_thread = Thread(target=self.watch_messages, args=(message_dir,))
+            self.watch_dir_thread = Thread(target=self.watch_messages, args=(send_dir,))
             self.watch_dir_thread.start()
 
-    def watch_messages(self, message_dir):
+    def watch_messages(self, send_dir):
         
         before = {}
-        while os.path.exists(message_dir):
+        while os.path.exists(send_dir):
             sleep (10)
-            after = dict ([(f, None) for f in os.listdir (message_dir)])
+            after = dict ([(f, None) for f in os.listdir (send_dir)])
             new_files = [f for f in after if not f in before]
             if new_files:
-                self.broadcast_message_files(message_dir, new_files)
+                self.broadcast_message_files(send_dir, new_files)
             before = after
 
     def broadcast_message_files(self, directory, filenames):
@@ -722,9 +736,13 @@ class goTennaCLI(cmd.Cmd):
             f = open(directory+"/"+filename,'r')
             message_data = f.read()
             f.close
+            
+            ## binary to ascii encoding and strip out newlines
+            encoded = zlib.compress(message_data, 9).encode('base64').replace('\n','')
+            print("[\n" + encoded.decode() + "\n]")
 
             gid = self.api_thread.gid.gid_val
-            segments = TxTennaSegment.tx_to_segments(gid, message_data, filename, str(self.messageIdx), "d", False)
+            segments = TxTennaSegment.tx_to_segments(gid, encoded, filename, str(self.messageIdx), "d", False)
             for seg in segments :
                 self.do_send_broadcast(seg.serialize_to_json())
                 sleep(10)
@@ -751,8 +769,10 @@ def run_cli():
                         help="Use this computer as an internet connected transaction gateway with a default GID")
     parser.add_argument("--local", action="store_true",
                         help="Use local bitcoind to confirm and broadcast transactions")
-    parser.add_argument("--message_dir",
+    parser.add_argument("--send_dir",
                         help="Broadcast message data from files in this directory")
+    parser.add_argument("--receive_dir",
+                        help="Write files from received message data in this directory")
     parser.add_argument('-p', '--pipe',
                         default='/tmp/blocksat/api',
                         help='Pipe on which relayed message data is written out to ' +
@@ -780,11 +800,12 @@ def run_cli():
     cli_obj.local = args.local
 
     ## broadcast message data from files in this directory, eg. created by the blocksat
-    cli_obj.message_dir = args.message_dir
-    if (args.message_dir is not None):
-        cli_obj.do_broadcast_messages(args.message_dir)
+    cli_obj.send_dir = args.send_dir
+    if (args.send_dir is not None):
+        cli_obj.do_broadcast_messages(args.send_dir)
 
     cli_obj.pipe_file = args.pipe
+    cli_obj.receive_dir = args.receive_dir
 
     try:
         sleep(5)

@@ -121,8 +121,7 @@ class TxTennaSegment:
         if isZ85 :
             strRaw = z85.encode(strHexTx)
 
-        escaped_chars = len(''.join(s for s in strRaw if s in string.whitespace))
-        length = len(strRaw) + escaped_chars
+        length = len(strRaw)
 
         seg_count = 0
         if length <= segment0Len :
@@ -160,13 +159,10 @@ class TxTennaSegment:
                     tx_hash = strHexTxHash
 
                 seg_len = len(strRaw)
-                ## json encodes escaped characters as two characters, eg. /n -> //n
-                escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
 
                 tx_seg = strRaw
-                if seg_len + escaped_chars > segment0Len :
+                if seg_len > segment0Len :
                     seg_len = segment0Len
-                    seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
                 
@@ -177,12 +173,9 @@ class TxTennaSegment:
 
             else :
                 seg_len = len(strRaw)
-                ## json encodes escaped characters as two characters, eg. /n -> //n
-                escaped_chars = len(''.join(s for s in strRaw[:seg_len] if s in string.whitespace))
                 tx_seg = strRaw
-                if seg_len + escaped_chars > segment1Len :
+                if seg_len > segment1Len :
                     seg_len = segment1Len
-                    seg_len -= escaped_chars
                     tx_seg = strRaw[:seg_len]
                     strRaw = strRaw[seg_len:]
 
