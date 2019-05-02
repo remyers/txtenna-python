@@ -49,23 +49,26 @@ You will also need to do the following:
   
     $ python txtenna.py -h
     usage: Run a txTenna transaction gateway [-h] [--gateway] [--local]
-                                            [--message_dir MESSAGE_DIR] [-p PIPE]
-                                            SDK_TOKEN GEO_REGION
+                                         [--send_dir SEND_DIR]
+                                         [--receive_dir RECEIVE_DIR] [-p PIPE]
+                                         SDK_TOKEN GEO_REGION
 
-    positional arguments:
-      SDK_TOKEN             The token for the goTenna SDK
-      GEO_REGION            The geo region number you are in
+        positional arguments:
+        SDK_TOKEN             The token for the goTenna SDK
+        GEO_REGION            The geo region number you are in
 
-    optional arguments:
-      -h, --help            show this help message and exit
-      --gateway             Use this computer as an internet connected transaction
-                            gateway with a default GID
-      --local               Use local bitcoind to confirm and broadcast
-                            transactions
-      --message_dir MESSAGE_DIR
-                            Broadcast message data from files in this directory
-      -p PIPE, --pipe PIPE  Pipe on which relayed message data is written out to
-                            (default: /tmp/blocksat/api)
+        optional arguments:
+        -h, --help            show this help message and exit
+        --gateway             Use this computer as an internet connected transaction
+                                gateway with a default GID
+        --local               Use local bitcoind to confirm and broadcast
+                                transactions
+        --send_dir SEND_DIR   Broadcast message data from files in this directory
+        --receive_dir RECEIVE_DIR
+                                Write files from received message data in this
+                                directory
+        -p PIPE, --pipe PIPE  Pipe on which relayed message data is written out to
+                                (default: /tmp/blocksat/api)
     
 ## Example 1: Bitcoin Transactions Gateway (using a remote txtenna-server)
 
@@ -195,7 +198,7 @@ Before you pay the lightning invoice with a testnet lightning wallet, setup and 
 
 ### System B (mesh and satellite connected data receiver/relay)
 
-Follow the instructions to setup the Blockstream Blocksat API environment and run [Examples 3](https://github.com/Blockstream/satellite/tree/master/api/examples#example-3-testing-the-api-while-receiving-data-directly-via-internet). Run 'api_data_reader.py' with the --planetext flag to read Blocksat API data written to the /tmp/blocksat/api named pipe. The --planetext flag ensures that all data received will be written to the 'downloads' directory (eg. ./downloads), including encrypted data meant for someone else.
+Follow the instructions to setup the Blockstream Blocksat API environment and run [Examples 3](https://github.com/Blockstream/satellite/tree/master/api/examples#example-3-testing-the-api-while-receiving-data-directly-via-internet). Run 'api_data_reader.py' with the --plaintext flag to read Blocksat API data written to the /tmp/blocksat/api named pipe. The --plaintext flag ensures that all data received will be written to the 'downloads' directory (eg. ./downloads), including encrypted data meant for someone else.
 
     (blocksat-api) $ ./api_data_reader.py --plaintext
     Waiting for data...
@@ -203,9 +206,9 @@ Follow the instructions to setup the Blockstream Blocksat API environment and ru
     [2019-04-16 13:41:41]: Got    6098 bytes        Saving as plaintext
     Saved in downloads/20190416134141.
 
-In a different window, follow the instructions to setup the TxTenna-Python environment (described above) and run 'txtenna.py' with the '--message_dir' argument set to the directory where 'api_data_reader.py' will save file data (eg. ../blockstream/satellite/api/examples/downloads/). 
+In a different window, follow the instructions to setup the TxTenna-Python environment (described above) and run 'txtenna.py' with the '--send_dir' argument set to the directory where 'api_data_reader.py' will save file data (eg. ../blockstream/satellite/api/examples/downloads/). 
 
-    (txtenna) $ python txtenna.py --message_dir ../blockstream/satellite/api/examples/downloads <Your SDK Token String> 2
+    (txtenna) $ python txtenna.py --send_dir ../blockstream/satellite/api/examples/downloads <Your SDK Token String> 2
     region=2
     Device physically connected, configure to continue
     set gid= 199376656922447
@@ -220,11 +223,11 @@ In a different window, follow the instructions to setup the TxTenna-Python envir
 
     succeeded!
 
-If data exists in the specified message_dir directory, that data will be broadcast over the goTenna Mesh radio. All other goTenna Mesh radios within range will receive the data. 
+If data exists in the specified send_dir directory, that data will be broadcast over the goTenna Mesh radio. All other goTenna Mesh radios within range will receive the data. 
 
 ### System C (mesh connected data receiver)
 
-Follow the instructions to setup the Blockstream Blocksat API environment and run [Examples 3](https://github.com/Blockstream/satellite/tree/master/api/examples#example-3-testing-the-api-while-receiving-data-directly-via-internet). Run 'api_data_reader.py' with the --pipe /tmp/blocksat/api2 flag to read Blocksat API data written to the /tmp/blocksat/api2 named pipe. Also use the --planetext flag to ensure that all data received will be saved. Data will be written to the 'downloads' directory so you should run ./api_data_reader.py from a different directory to avoid writing data to the same downloads directory being read from by the System B txtenna.py script. Changing to a new directory is only and specifying a second pipe are only required if you are testing on a single system.
+Follow the instructions to setup the Blockstream Blocksat API environment and run [Examples 3](https://github.com/Blockstream/satellite/tree/master/api/examples#example-3-testing-the-api-while-receiving-data-directly-via-internet). Run 'api_data_reader.py' with the --pipe /tmp/blocksat/api2 flag to read Blocksat API data written to the /tmp/blocksat/api2 named pipe. Also use the --plaintext flag to ensure that all data received will be saved. Data will be written to the 'downloads' directory so you should run ./api_data_reader.py from a different directory to avoid writing data to the same downloads directory being read from by the System B txtenna.py script. Changing to a new directory is only and specifying a second pipe are only required if you are testing on a single system.
 
     (blocksat-api) $ mkdir system_c
     (blocksat-api) $ cd system_c
