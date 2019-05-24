@@ -2,7 +2,7 @@
 
 The TxTenna Python project is an example script that demonstrates how you can use an offline computer with an attached [goTenna Mesh](http://gotennamesh.com) radio to settle Bitcoin transactions on the Bitcoin network. This script also provides an example of how an offline computer can relay over the TxTenna Mesh network arbitrary data received from the [Blockstream Blocksat](https://blockstream.com/satellite/) and uplinked using the [Blocksat API example](https://github.com/Blockstream/satellite/tree/master/api/examples) scripts.
 
-This project is inspired by the ideas of the [Mule Tools](http://mule.tools) initiative and uses a JSON based messaging protocol derived from the mobile [TxTenna App](https://TxTenna.com) and [TxTenna Server](https://github.com/MuleTools/txTenna-server) projects. The [txtenna.py](./txtenna.py) example script builds on the [sample.py](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/sample.py) script created for the goTenna [Public SDK](https://gotenna.com/pages/sdk).
+This project is inspired by the ideas of the [Mule Tools](http://mule.tools) initiative and uses a JSON based messaging protocol derived from the mobile [TxTenna App](https://TxTenna.com) and [TxTenna Server](https://github.com/MuleTools/txTenna-server) projects. The [txtenna.py](./txtenna.py) example script builds on the [sample.py](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/sample.py) script created for the goTenna [Public SDK](https://gotenna.com/pages/sdk#sdk-signup).
 
 ![TxTenna Mesh Relay Architecture](./doc/txtenna_architecture.png?raw=true "TxTenna Mesh Relay Architecture")
 
@@ -41,9 +41,18 @@ You will also need to do the following:
 
 > NOTE: if you will be accessing a local [bitcoind](https://bitcoincore.org/en/download/) daemon, we use the [getrawtransaction](https://bitcoin.org/en/developer-reference#getrawtransaction) RPC call which expects a local **indexed** installation of bitcoind.
 
-> TIP: You may need to install the [77-gotenna.rules](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/77-gotenna.rules) file for linux systems that use the udev device manager.
+> WARNING: This project has not had a professional security review and should only be used for research and testing.
 
-> TIP: if you change your SDK Token, delete the .goTenna file created by txtenna.py .
+# Troubleshooting
+
+* You may need to install the [77-gotenna.rules](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/77-gotenna.rules) file for linux systems that use the udev device manager.
+* If you change your SDK Token, delete the .goTenna file created by txtenna.py .
+* Either use sudo to run Python or use chmod to grant access to your USB serial device if you see this error:
+
+        SerialException: [Errno 13] could not open port /dev/ttyACM0: [Errno 13] Permission denied: '/dev/ttyACM0'
+        ERROR:goTenna.driver.Driver:Failed to connect to device!
+* You can plug in two goTennas and test communication between them from different shell windows.
+* To test txtenna-python with the TxTenna app ou must [build a version of the TxTenna App](https://github.com/MuleTools/txTenna) that uses the same [SDK Token](https://gotenna.com/pages/sdk#sdk-signup) as you use with txtenna-python.
 
 # How does it work
   
